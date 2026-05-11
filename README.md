@@ -5,7 +5,7 @@ Read public news frontpages from your terminal — designed to be agent-friendly
 `news-cli` fetches headlines, deks (subtitles/abstracts) and lede images from
 the publicly available frontpages of news outlets, and emits them in three
 formats: terse text (default), Markdown (`--md`), or JSON (`--json`). The
-JSON output is sized to fit comfortably in an LLM context window so that an
+JSON output is sized to fit comfortably in an LLM context window so an
 agent can summarize the current state of the world to your taste.
 
 ## What it does
@@ -14,6 +14,7 @@ agent can summarize the current state of the world to your taste.
 - **(b) LLM-learned extractors.** `news learn <url>` discovers an outlet's RSS / Atom feed, falls back to schema.org `NewsArticle` in `ld+json`, and finally shells out to your locally-installed coding-agent CLI (`claude` or `codex`) to derive CSS selectors against the homepage HTML. No API key handling — auth comes from whichever CLI you already have.
 - **(c) CLI-first.** `--md` and `--json` work on every subcommand.
 - **(d) Community sources.** When `learn` succeeds you can submit the new source back to this repo with `news submit <name>`.
+- **(+) Editorial brief.** `news tenor` asks the LLM to dedupe, drop clickbait, and surface long-lasting stories — optionally biased to your interest of the day.
 
 ## Install
 
@@ -28,40 +29,112 @@ git clone https://github.com/gado-ships-it/news-cli && cd news-cli
 go build -o news .
 ```
 
-## Usage
+## Usage at a glance
 
 ```sh
-news fetch                # every configured source
-news fetch nzz nyt bbc    # a subset
-news fetch --md           # markdown
-news fetch --json -n 5    # JSON, 5 items per source
+news fetch                                    # every configured source
+news fetch nzz nyt bbc                        # a subset
+news fetch --md                               # markdown
+news fetch --json -n 5                        # JSON, 5 items per source
+news fetch --ascii --ascii-width 60           # lede images as ASCII art
 
-news list                 # see what's available
+news list                                     # see what's available
 news list --json
 
+news tenor                                    # deduped editorial brief
+news tenor -i "climate science only"          # bias to a topic
+news tenor --md --ascii --entries 10          # bigger, with thumbnails
+
 news learn https://www.example-news.com/
-news submit example       # opens a PR to gado-ships-it/news-cli via `gh`
+news submit example                           # opens a PR via `gh`
 ```
 
-### Subcommands
+## Subcommands
 
 | Command | What it does |
 |---|---|
 | `fetch [name…]` | Fetch one, several, or all configured frontpages. |
 | `list` | Show every configured source. |
+| `tenor [name…]` | Deduplicated editorial brief via `claude` / `codex`. |
 | `learn <url>` | Derive an extractor (feed → ld+json → CSS via LLM) and save it locally. |
 | `submit <name>` | Open a PR to `gado-ships-it/news-cli` adding a locally-learned source. |
 | `sources show <name>` | Print one source's JSON definition. |
 | `sources remove <name>` | Drop a source from your local store. |
 | `sources path` | Print the path to `sources.json`. |
 
-Every subcommand accepts `--md` and `--json`.
+### Global flags (every subcommand)
 
-### Configuration
+| Flag | Default | Meaning |
+|---|---|---|
+| `--md` | off | Render output as Markdown. |
+| `--json` | off | Render output as JSON. `--json` wins if both are given. |
+| `--ascii` | off | Render lede images as ASCII art under each item (text and `--md` only; ignored for `--json`). |
+| `--ascii-width N` | `60` | ASCII art width in characters. Height is derived from the source aspect ratio with terminal cell correction. |
+
+When neither `--md` nor `--json` is set, the **default text mode** uses ANSI styling on a TTY: bold cyan headlines, bold yellow source banners, and gray + underlined OSC 8 hyperlinks for URLs and source citations. Styling is auto-disabled when stdout isn't a TTY or `NO_COLOR` is set; `FORCE_COLOR=1` overrides the TTY check.
+
+### `news fetch [name…]`
+
+Fetches the named sources (or every configured source if no names are given) in parallel.
+
+| Flag | Short | Default | Meaning |
+|---|---|---|---|
+| `--max N` | `-n N` | `10` | Max items per source. `0` = unlimited. |
+| `--concurrency N` |  | `6` | Parallel fetches across sources. |
+| `--timeout D` |  | `30s` | Overall fetch timeout (Go duration: `30s`, `1m30s`, …). |
+
+### `news tenor [name…]`
+
+Fetches the named sources (or all configured), ships the corpus to your locally-installed LLM CLI, and prints a short editorial brief: duplicates merged, single-event noise dropped, long-term-consequential stories surfaced. Every entry cites at least one source with the verbatim article URL.
+
+| Flag | Short | Default | Meaning |
+|---|---|---|---|
+| `--max N` | `-n N` | `10` | Max items per source sent to the LLM (caps prompt size). |
+| `--entries N` |  | `8` | Target number of merged entries in the brief. |
+| `--interest "…"` | `-i` | (empty) | Free-form prose to bias topic selection. Examples: `"politics from Asia"`, `"only sports"`, `"climate and science, no politics"`. When this contradicts the default "long-lasting / non-clickbait" rules, the interest wins. |
+| `--concurrency N` |  | `6` | Parallel fetches across sources. |
+| `--timeout D` |  | `5m` | Overall fetch + LLM timeout. |
+
+### `news learn <homepage-url>`
+
+Discovery pipeline, in order:
+
+1. **RSS / Atom feed** — `<link rel="alternate">` autodiscovery, anchor scan for feed-shaped URLs (`*.rss`, `*.atom`, `/feeds/`…), one-level follow of `/rss` and `/feeds` index pages, and a fixed list of common paths. Candidates are ranked by name hints (`recent`, `all`, `top`, `headlines`…) so multi-feed outlets land on the firehose, not a section feed.
+2. **schema.org `NewsArticle`** — walks `<script type="application/ld+json">` blocks on the homepage for `NewsArticle` / `ItemList` entries.
+3. **LLM-derived CSS selectors** — sends a truncated, cleaned copy of the homepage HTML to `claude -p` or `codex exec`, asks for `{item, headline, link, dek, image}` selectors, and validates them against the same page before saving.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--name <id>` | derived from host | Override the auto-derived short id (`nzz.ch` → `nzz`). |
+| `--title <text>` | derived from host | Override the auto-derived display title. |
+| `--yes` | off | Skip the "submit back via PR?" prompt. |
+| `--timeout D` | `1m30s` | Overall learn timeout. |
+
+### `news submit <name>`
+
+Packages a locally-learned source as a contribution to the shared `gado-ships-it/news-cli` source list. If the [GitHub CLI](https://cli.github.com/) (`gh`) is installed and authenticated, the PR is opened in your browser via `gh pr create --web`; otherwise the encoded source is printed with manual fork-and-PR instructions.
+
+### `news sources`
+
+| Subcommand | What it does |
+|---|---|
+| `sources show <name>` | Print the resolved JSON definition of one source (local store wins over seed). |
+| `sources remove <name>` | Remove a learned source from the local store. Seeded sources are unaffected. |
+| `sources path` | Print the path to your local `sources.json`. |
+
+## Environment
+
+| Variable | Purpose |
+|---|---|
+| `NEWS_CLI_LLM` | Force a specific LLM backend: `claude` or `codex`. Default is `claude` if present, otherwise `codex`. |
+| `NO_COLOR` | Disable all ANSI styling regardless of TTY status (see [no-color.org](https://no-color.org/)). |
+| `FORCE_COLOR` | Force ANSI styling even when stdout isn't a TTY — useful for piping through `less -R`. |
+
+## Configuration
 
 - Local source overrides live at `~/.config/news-cli/sources.json`.
 - The bundled seed list is overlaid by your local store (yours wins).
-- LLM CSS fallback requires either the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`) or the [OpenAI Codex CLI](https://github.com/openai/codex) (`codex`) installed and authenticated on `$PATH`. Auth lives in the CLI — no API key is read from this tool's environment. `claude` is preferred when both are available; force one with `NEWS_CLI_LLM=claude` or `NEWS_CLI_LLM=codex`.
+- LLM-driven subcommands (`learn`'s CSS fallback and the whole of `tenor`) require either the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`) or the [OpenAI Codex CLI](https://github.com/openai/codex) (`codex`) installed and authenticated on `$PATH`. Auth lives in the CLI — no API key is read from this tool's environment.
 
 ## Bundled sources
 
