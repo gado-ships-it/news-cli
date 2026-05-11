@@ -67,6 +67,13 @@ func Sources() []source.Source {
 			Extractor: source.ExtractorSpec{Type: source.ExtractorFeed, FeedURL: "https://www.srf.ch/news/bnf/rss/1646"},
 		},
 		{
+			Name: "tagesanzeiger", Title: "Tages-Anzeiger", Homepage: "https://www.tagesanzeiger.ch/", Locale: "de-CH", Region: "Europe",
+			// The Tamedia partner-feeds host advertises a /sitemap index
+			// that lists per-section sub-feeds; /front is the homepage
+			// firehose ("Das Wichtigste des Tages") — what we want here.
+			Extractor: source.ExtractorSpec{Type: source.ExtractorFeed, FeedURL: "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/front"},
+		},
+		{
 			Name: "republik", Title: "Republik", Homepage: "https://www.republik.ch/", Locale: "de-CH", Region: "Europe",
 			Extractor: source.ExtractorSpec{Type: source.ExtractorFeed, FeedURL: "https://www.republik.ch/feed.xml"},
 		},
