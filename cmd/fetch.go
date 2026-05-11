@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
+	"github.com/gado-ships-it/news-cli/internal/ascii"
 	"github.com/gado-ships-it/news-cli/internal/config"
 	"github.com/gado-ships-it/news-cli/internal/fetcher"
 	"github.com/gado-ships-it/news-cli/internal/output"
@@ -54,8 +56,57 @@ no names are given. Sources can be referenced by their short name
 		defer cancel()
 		fps := fetcher.FetchAll(ctx, picked, fetchConcurrency)
 
-		return output.Frontpages(os.Stdout, fps, output.FromFlags(flagMD, flagJSON), fetchMax)
+		format := output.FromFlags(flagMD, flagJSON)
+		asciiFn := buildAsciiFnForFetch(ctx, fps, format)
+
+		return output.Frontpages(os.Stdout, fps, format, fetchMax, asciiFn)
 	},
+}
+
+// buildAsciiFnForFetch pre-renders ASCII art for every image URL we plan
+// to display, then returns a lookup fn. Done eagerly + concurrently so
+// rendering doesn't serialize behind the writer.
+func buildAsciiFnForFetch(ctx context.Context, fps []source.Frontpage, format output.Format) output.AsciiFn {
+	if !flagASCII || format == output.FormatJSON {
+		return nil
+	}
+	type job struct{ url string }
+	var jobs []job
+	seen := map[string]bool{}
+	for _, fp := range fps {
+		items := fp.Items
+		if fetchMax > 0 && len(items) > fetchMax {
+			items = items[:fetchMax]
+		}
+		for _, it := range items {
+			if it.ImageURL == "" || seen[it.ImageURL] {
+				continue
+			}
+			seen[it.ImageURL] = true
+			jobs = append(jobs, job{it.ImageURL})
+		}
+	}
+	cache := make(map[string]string, len(jobs))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8)
+	for _, j := range jobs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(u string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			art, _ := ascii.Render(ctx, u, flagASCIIWidth)
+			if art == "" {
+				return
+			}
+			mu.Lock()
+			cache[u] = art
+			mu.Unlock()
+		}(j.url)
+	}
+	wg.Wait()
+	return func(u string) string { return cache[u] }
 }
 
 func init() {

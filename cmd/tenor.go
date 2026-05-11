@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/gado-ships-it/news-cli/internal/ascii"
 	"github.com/gado-ships-it/news-cli/internal/config"
 	"github.com/gado-ships-it/news-cli/internal/fetcher"
 	"github.com/gado-ships-it/news-cli/internal/learn"
@@ -98,7 +100,62 @@ func runTenor(cmd *cobra.Command, args []string) error {
 		brief.Date = time.Now().UTC().Format("2006-01-02")
 	}
 
-	return output.Brief(os.Stdout, brief, output.FromFlags(flagMD, flagJSON))
+	format := output.FromFlags(flagMD, flagJSON)
+	asciiFn := buildAsciiFnForTenor(ctx, fps, brief, format)
+
+	return output.Brief(os.Stdout, brief, format, asciiFn)
+}
+
+// buildAsciiFnForTenor maps each brief item's first source article URL to
+// the ASCII art rendered from that original Item's ImageURL. Two-step
+// lookup because brief items don't carry image URLs; the fetched Items do.
+func buildAsciiFnForTenor(ctx context.Context, fps []source.Frontpage, brief *source.Brief, format output.Format) output.AsciiFn {
+	if !flagASCII || format == output.FormatJSON {
+		return nil
+	}
+	// article URL -> image URL, from the fetched corpus
+	imgByArticle := map[string]string{}
+	for _, fp := range fps {
+		for _, it := range fp.Items {
+			if it.URL != "" && it.ImageURL != "" {
+				imgByArticle[it.URL] = it.ImageURL
+			}
+		}
+	}
+	// Collect the image URLs we actually need (one per brief item).
+	want := map[string]string{} // articleURL -> imageURL
+	for _, bi := range brief.Items {
+		for _, s := range bi.Sources {
+			if img, ok := imgByArticle[s.URL]; ok && img != "" {
+				want[s.URL] = img
+				break
+			}
+		}
+	}
+	if len(want) == 0 {
+		return nil
+	}
+	cache := make(map[string]string, len(want))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 6)
+	for articleURL, imgURL := range want {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(art, img string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			rendered, _ := ascii.Render(ctx, img, flagASCIIWidth)
+			if rendered == "" {
+				return
+			}
+			mu.Lock()
+			cache[art] = rendered
+			mu.Unlock()
+		}(articleURL, imgURL)
+	}
+	wg.Wait()
+	return func(articleURL string) string { return cache[articleURL] }
 }
 
 // pickSources resolves CLI arg names against the merged source list. Empty

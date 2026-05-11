@@ -33,14 +33,21 @@ func FromFlags(md, jsonOut bool) Format {
 }
 
 // Frontpages renders a slice of Frontpage in the requested format.
-func Frontpages(w io.Writer, fps []source.Frontpage, f Format, maxItems int) error {
+// AsciiFn returns rendered ASCII art for a given URL, or "" to skip.
+// JSON output ignores it; text and md modes embed the art under the
+// matching item. The key is whichever URL space the caller wants to look
+// up — typically Item.ImageURL for frontpages and the brief item's first
+// source article URL for tenor.
+type AsciiFn func(url string) string
+
+func Frontpages(w io.Writer, fps []source.Frontpage, f Format, maxItems int, asciiByImageURL AsciiFn) error {
 	switch f {
 	case FormatJSON:
 		return writeJSON(w, fps)
 	case FormatMD:
-		return writeMD(w, fps, maxItems)
+		return writeMD(w, fps, maxItems, asciiByImageURL)
 	default:
-		return writeText(w, fps, maxItems)
+		return writeText(w, fps, maxItems, asciiByImageURL)
 	}
 }
 
@@ -80,7 +87,7 @@ func writeJSON(w io.Writer, v any) error {
 	return enc.Encode(v)
 }
 
-func writeMD(w io.Writer, fps []source.Frontpage, maxItems int) error {
+func writeMD(w io.Writer, fps []source.Frontpage, maxItems int, asciiFn AsciiFn) error {
 	fmt.Fprintf(w, "# News frontpages — fetched %s\n\n", time.Now().UTC().Format(time.RFC3339))
 	for _, fp := range fps {
 		fmt.Fprintf(w, "## %s\n\n", fp.Source.Title)
@@ -98,6 +105,14 @@ func writeMD(w io.Writer, fps []source.Frontpage, maxItems int) error {
 			if it.Dek != "" {
 				fmt.Fprintf(w, "  > %s\n", oneLine(it.Dek))
 			}
+			if asciiFn != nil && it.ImageURL != "" {
+				if art := asciiFn(it.ImageURL); art != "" {
+					fmt.Fprintln(w, "  ```")
+					fmt.Fprint(w, indent(art, "  "))
+					fmt.Fprintln(w, "  ```")
+					continue
+				}
+			}
 			if it.ImageURL != "" {
 				fmt.Fprintf(w, "  ![](%s)\n", it.ImageURL)
 			}
@@ -107,7 +122,7 @@ func writeMD(w io.Writer, fps []source.Frontpage, maxItems int) error {
 	return nil
 }
 
-func writeText(w io.Writer, fps []source.Frontpage, maxItems int) error {
+func writeText(w io.Writer, fps []source.Frontpage, maxItems int, asciiFn AsciiFn) error {
 	for _, fp := range fps {
 		fmt.Fprintf(w, "=== %s — %s ===\n", fp.Source.Title, fp.Source.Homepage)
 		if fp.Error != "" {
@@ -124,10 +139,43 @@ func writeText(w io.Writer, fps []source.Frontpage, maxItems int) error {
 				fmt.Fprintf(w, "    %s\n", oneLine(it.Dek))
 			}
 			fmt.Fprintf(w, "    %s\n", it.URL)
+			if asciiFn != nil && it.ImageURL != "" {
+				if art := asciiFn(it.ImageURL); art != "" {
+					fmt.Fprint(w, indent(art, "    "))
+				}
+			}
 		}
 		fmt.Fprintln(w)
 	}
 	return nil
+}
+
+// firstNonEmpty returns the ASCII art for the first BriefSource whose URL
+// the renderer can resolve. Used when a tenor entry merges multiple
+// outlets and we just want a single representative thumbnail.
+func firstNonEmpty(fn AsciiFn, sources []source.BriefSource) string {
+	for _, s := range sources {
+		if art := fn(s.URL); art != "" {
+			return art
+		}
+	}
+	return ""
+}
+
+// indent prefixes every non-empty line with prefix. Used to align embedded
+// ASCII art under the item it belongs to.
+func indent(s, prefix string) string {
+	if s == "" {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		if ln == "" {
+			continue
+		}
+		lines[i] = prefix + ln
+	}
+	return strings.Join(lines, "\n")
 }
 
 func oneLine(s string) string {
@@ -136,8 +184,10 @@ func oneLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// Brief renders an editorial brief in the requested format.
-func Brief(w io.Writer, b *source.Brief, f Format) error {
+// Brief renders an editorial brief in the requested format. asciiFn is
+// keyed on the article URL of a brief item's first source — the tenor
+// command builds that map from its fetched frontpages.
+func Brief(w io.Writer, b *source.Brief, f Format, asciiFn AsciiFn) error {
 	switch f {
 	case FormatJSON:
 		return writeJSON(w, b)
@@ -148,6 +198,14 @@ func Brief(w io.Writer, b *source.Brief, f Format) error {
 		for _, it := range b.Items {
 			fmt.Fprintf(w, "## %s\n\n", oneLine(it.Headline))
 			fmt.Fprintf(w, "%s\n\n", oneLine(it.Summary))
+			if asciiFn != nil && len(it.Sources) > 0 {
+				if art := firstNonEmpty(asciiFn, it.Sources); art != "" {
+					fmt.Fprintln(w, "```")
+					fmt.Fprint(w, art)
+					fmt.Fprintln(w, "```")
+					fmt.Fprintln(w)
+				}
+			}
 			if len(it.Sources) > 0 {
 				parts := make([]string, 0, len(it.Sources))
 				for _, s := range it.Sources {
@@ -162,6 +220,11 @@ func Brief(w io.Writer, b *source.Brief, f Format) error {
 		for _, it := range b.Items {
 			fmt.Fprintf(w, "• %s\n", oneLine(it.Headline))
 			fmt.Fprintf(w, "  %s\n", oneLine(it.Summary))
+			if asciiFn != nil && len(it.Sources) > 0 {
+				if art := firstNonEmpty(asciiFn, it.Sources); art != "" {
+					fmt.Fprint(w, indent(art, "  "))
+				}
+			}
 			if len(it.Sources) > 0 {
 				names := make([]string, 0, len(it.Sources))
 				for _, s := range it.Sources {

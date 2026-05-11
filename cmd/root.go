@@ -6,8 +6,10 @@ import (
 
 // Global flags shared across every subcommand.
 var (
-	flagMD   bool
-	flagJSON bool
+	flagMD         bool
+	flagJSON       bool
+	flagASCII      bool
+	flagASCIIWidth int
 )
 
 var rootCmd = &cobra.Command{
@@ -35,6 +37,8 @@ func Execute() error {
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagMD, "md", false, "render output as Markdown")
 	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "render output as JSON")
+	rootCmd.PersistentFlags().BoolVar(&flagASCII, "ascii", false, "render lede images as ASCII art (text and --md only)")
+	rootCmd.PersistentFlags().IntVar(&flagASCIIWidth, "ascii-width", 60, "ASCII art width in characters")
 
 	rootCmd.AddCommand(fetchCmd)
 	rootCmd.AddCommand(listCmd)
