@@ -24,6 +24,7 @@ var (
 	tenorConcurrency int
 	tenorTimeout     time.Duration
 	tenorEntries     int
+	tenorInterest    string
 )
 
 var tenorCmd = &cobra.Command{
@@ -47,6 +48,8 @@ func init() {
 	tenorCmd.Flags().IntVar(&tenorEntries, "entries", 8, "target number of merged entries in the brief")
 	tenorCmd.Flags().IntVar(&tenorConcurrency, "concurrency", 6, "parallel fetches across sources")
 	tenorCmd.Flags().DurationVar(&tenorTimeout, "timeout", 5*time.Minute, "overall fetch+LLM timeout")
+	tenorCmd.Flags().StringVarP(&tenorInterest, "interest", "i", "",
+		"free-form prose to bias topic selection (e.g. \"politics from Asia\", \"only sports\", \"climate science only\"); when this contradicts the default \"long-lasting / non-clickbait\" rules, the interest wins")
 }
 
 func runTenor(cmd *cobra.Command, args []string) error {
@@ -83,7 +86,7 @@ func runTenor(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "asking %s for a brief over %d headlines from %d sources…\n",
 		backend.Name, totalCorpusItems(corpus), len(corpus))
 
-	prompt := buildTenorPrompt(corpus, tenorEntries)
+	prompt := buildTenorPrompt(corpus, tenorEntries, tenorInterest)
 	raw, err := backend.RunPrompt(ctx, prompt)
 	if err != nil {
 		return err
@@ -234,14 +237,32 @@ func totalCorpusItems(corpus []corpusEntry) int {
 	return n
 }
 
-func buildTenorPrompt(corpus []corpusEntry, entries int) string {
+func buildTenorPrompt(corpus []corpusEntry, entries int, interest string) string {
 	corpusJSON, _ := json.Marshal(corpus)
 	today := time.Now().UTC().Format("2006-01-02")
+
+	// Interest block is inserted before the default rules so it has clear
+	// editorial authority — the model sees the user's intent first, then
+	// the fallback defaults. If empty, we omit the block entirely.
+	interestBlock := ""
+	if i := strings.TrimSpace(interest); i != "" {
+		interestBlock = fmt.Sprintf(`
+USER INTEREST (HIGHEST PRIORITY — overrides any defaults below when it conflicts):
+"%s"
+
+Interpret this generously:
+- It may NARROW the brief ("only X") — in that case the brief should contain only stories matching the interest, even if that means fewer entries.
+- It may BIAS the brief ("more X, less Y") — surface more matching stories but still keep at least one or two of the day's most consequential headlines for context.
+- It may CONTRADICT the de-emphasize list below (e.g. user wants sports / celebrity / gossip) — in that case, the interest WINS and you should include what they asked for.
+
+`, i)
+	}
+
 	return fmt.Sprintf(`You are a constructive news editor. Below is a JSON list of frontpage headlines fetched today from multiple major news outlets.
 
 Produce a short editorial BRIEF of today's events.
-
-Rules:
+%s
+Default rules (applied when the user interest above doesn't override them):
 1. DEDUPE: when multiple outlets cover the same underlying story, merge them into ONE entry and list all the originating outlets in "sources".
 2. PRIORITIZE long-term consequence: geopolitics, policy, durable economic shifts, scientific results, structural technology trends, climate, institutional events, public health.
 3. DE-EMPHASIZE (usually omit): celebrity gossip, sports scores, single-event human-interest, weather, lifestyle, daily market ticker noise, clickbait framings.
@@ -266,7 +287,7 @@ Reply with STRICT JSON ONLY — no prose, no markdown fences:
 
 Today's date is %s. Today's frontpage corpus follows:
 
-%s`, entries, today, today, string(corpusJSON))
+%s`, interestBlock, entries, today, today, string(corpusJSON))
 }
 
 // parseBrief locates the first balanced JSON object in raw and unmarshals
