@@ -1,0 +1,7 @@
+/news
+/news-cli
+/dist/
+*.test
+*.out
+.DS_Store
+.env
