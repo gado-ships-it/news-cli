@@ -123,8 +123,14 @@ func writeMD(w io.Writer, fps []source.Frontpage, maxItems int, asciiFn AsciiFn)
 }
 
 func writeText(w io.Writer, fps []source.Frontpage, maxItems int, asciiFn AsciiFn) error {
+	st := newStyler(w)
 	for _, fp := range fps {
-		fmt.Fprintf(w, "=== %s — %s ===\n", fp.Source.Title, fp.Source.Homepage)
+		// Source banner: title in bold yellow, homepage as a dim hyperlink.
+		if st.on {
+			fmt.Fprintf(w, "=== %s · %s ===\n", st.sourceTitle(fp.Source.Title), st.link(fp.Source.Homepage, fp.Source.Homepage))
+		} else {
+			fmt.Fprintf(w, "=== %s — %s ===\n", fp.Source.Title, fp.Source.Homepage)
+		}
 		if fp.Error != "" {
 			fmt.Fprintf(w, "  ! %s\n\n", fp.Error)
 			continue
@@ -134,11 +140,15 @@ func writeText(w io.Writer, fps []source.Frontpage, maxItems int, asciiFn AsciiF
 			items = items[:maxItems]
 		}
 		for _, it := range items {
-			fmt.Fprintf(w, "  • %s\n", oneLine(it.Headline))
+			fmt.Fprintf(w, "  • %s\n", st.headline(oneLine(it.Headline)))
 			if it.Dek != "" {
 				fmt.Fprintf(w, "    %s\n", oneLine(it.Dek))
 			}
-			fmt.Fprintf(w, "    %s\n", it.URL)
+			// URL line: still printed in both modes, but on a TTY it's
+			// gray + underlined + clickable.
+			if it.URL != "" {
+				fmt.Fprintf(w, "    %s\n", st.link(it.URL, it.URL))
+			}
 			if asciiFn != nil && it.ImageURL != "" {
 				if art := asciiFn(it.ImageURL); art != "" {
 					fmt.Fprint(w, indent(art, "    "))
@@ -216,9 +226,10 @@ func Brief(w io.Writer, b *source.Brief, f Format, asciiFn AsciiFn) error {
 		}
 		return nil
 	default:
-		fmt.Fprintf(w, "News brief — %s  (via %s)\n\n", b.Date, b.Model)
+		st := newStyler(w)
+		fmt.Fprintf(w, "News brief — %s  %s\n\n", b.Date, st.dim("(via "+b.Model+")"))
 		for _, it := range b.Items {
-			fmt.Fprintf(w, "• %s\n", oneLine(it.Headline))
+			fmt.Fprintf(w, "• %s\n", st.headline(oneLine(it.Headline)))
 			fmt.Fprintf(w, "  %s\n", oneLine(it.Summary))
 			if asciiFn != nil && len(it.Sources) > 0 {
 				if art := firstNonEmpty(asciiFn, it.Sources); art != "" {
@@ -226,13 +237,24 @@ func Brief(w io.Writer, b *source.Brief, f Format, asciiFn AsciiFn) error {
 				}
 			}
 			if len(it.Sources) > 0 {
-				names := make([]string, 0, len(it.Sources))
+				parts := make([]string, 0, len(it.Sources))
 				for _, s := range it.Sources {
-					names = append(names, s.Name)
+					parts = append(parts, st.link(s.Name, s.URL))
 				}
-				fmt.Fprintf(w, "  sources: %s\n", strings.Join(names, ", "))
-				for _, s := range it.Sources {
-					fmt.Fprintf(w, "    %s\n", s.URL)
+				if st.on {
+					// On a TTY: source names are the only thing shown; each
+					// is gray + underlined + clickable via OSC 8.
+					fmt.Fprintf(w, "  %s %s\n", st.dim("sources:"), strings.Join(parts, st.dim(", ")))
+				} else {
+					// Off TTY: keep the URLs visible so scripts can grep.
+					names := make([]string, 0, len(it.Sources))
+					for _, s := range it.Sources {
+						names = append(names, s.Name)
+					}
+					fmt.Fprintf(w, "  sources: %s\n", strings.Join(names, ", "))
+					for _, s := range it.Sources {
+						fmt.Fprintf(w, "    %s\n", s.URL)
+					}
 				}
 			}
 			fmt.Fprintln(w)
