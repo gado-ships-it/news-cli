@@ -1,13 +1,13 @@
 # news-cli
 
-**The agent-native CLI of [tenor.news](https://tenor.news/).**
+**An agent-native CLI for news — inspired by [tenor.news](https://tenor.news/).**
 
-[tenor.news](https://tenor.news/) is a constructive news service that
-monitors global outlets, filters out clickbait, removes duplicates and
-condenses the day's events. `news-cli` is its companion command-line tool
-— designed so an LLM agent on your machine can do the same job locally,
-against the same lineup of outlets, with the formatting and editorial
-posture an agent actually wants.
+Independent project. `tenor.news` is the original user-facing service
+that monitors global outlets, filters out clickbait, removes duplicates
+and condenses the day's events; `news-cli` borrows that editorial posture
+and brings it to the terminal so an LLM agent on your machine can do the
+same job locally — against whatever lineup of outlets you choose, with
+formatting an agent actually wants.
 
 It fetches headlines, deks (subtitles/abstracts) and lede images from
 publicly available frontpages and emits them in three formats: terse text
@@ -145,8 +145,13 @@ Packages a locally-learned source as a contribution to the shared `gado-ships-it
 
 ## Bundled sources
 
-The seed list is the [tenor.news](https://tenor.news/) lineup, extended
-with the major US/UK outlets from [pippinlee/news-cli](https://github.com/pippinlee/news-cli):
+The starter seed list is the lineup [tenor.news](https://tenor.news/) was
+using when this project was written (used here as a sensible default, not
+an endorsement), extended with the major US/UK outlets from
+[pippinlee/news-cli](https://github.com/pippinlee/news-cli). `news-cli`
+is not affiliated with either project — add, remove and override sources
+with `news learn`, `news submit`, and `news sources remove` to make the
+list your own.
 
 Semafor · Neue Zürcher Zeitung · The New York Times · The Economist · Foreign Policy ·
 African Arguments · Le Monde · The Korea Herald · CNA (Channel News Asia) · Nature ·
