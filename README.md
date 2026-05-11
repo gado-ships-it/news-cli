@@ -1,12 +1,19 @@
 # news-cli
 
-Read public news frontpages from your terminal — designed to be agent-friendly.
+**The agent-native CLI of [tenor.news](https://tenor.news/).**
 
-`news-cli` fetches headlines, deks (subtitles/abstracts) and lede images from
-the publicly available frontpages of news outlets, and emits them in three
-formats: terse text (default), Markdown (`--md`), or JSON (`--json`). The
-JSON output is sized to fit comfortably in an LLM context window so an
-agent can summarize the current state of the world to your taste.
+[tenor.news](https://tenor.news/) is a constructive news service that
+monitors global outlets, filters out clickbait, removes duplicates and
+condenses the day's events. `news-cli` is its companion command-line tool
+— designed so an LLM agent on your machine can do the same job locally,
+against the same lineup of outlets, with the formatting and editorial
+posture an agent actually wants.
+
+It fetches headlines, deks (subtitles/abstracts) and lede images from
+publicly available frontpages and emits them in three formats: terse text
+(default), Markdown (`--md`), or JSON (`--json`). The JSON output is sized
+to fit comfortably in an LLM context window so an agent can summarize the
+current state of the world to your taste.
 
 ## What it does
 
@@ -138,7 +145,7 @@ Packages a locally-learned source as a contribution to the shared `gado-ships-it
 
 ## Bundled sources
 
-The seed list combines the outlets used by [tenor.news](https://tenor.news/)
+The seed list is the [tenor.news](https://tenor.news/) lineup, extended
 with the major US/UK outlets from [pippinlee/news-cli](https://github.com/pippinlee/news-cli):
 
 Semafor · Neue Zürcher Zeitung · The New York Times · The Economist · Foreign Policy ·
