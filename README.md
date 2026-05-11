@@ -58,6 +58,219 @@ news learn https://www.example-news.com/
 news submit example                           # opens a PR via `gh`
 ```
 
+## Examples
+
+Real outputs from `news fetch` and `news tenor`. Headlines and excerpts are condensed for readability; URLs are shown verbatim.
+
+### Plain text — `news fetch`
+
+```text
+$ news fetch bbc nzz -n 2
+=== BBC News — https://www.bbc.com/news ===
+  • Analysis: Has Starmer done enough to save his premiership?
+    Was the prime minister's speech enough to avert a challenge to his leadership less than two years after he won a landslide general election victory?
+    https://www.bbc.com/news/articles/c3r2pr95yq0o
+
+  • British passengers from cruise ship isolating in hospital
+    The passengers landed in the UK on Sunday and none have reported symptoms, but they will be monitored in hospital for 72 hours.
+    https://www.bbc.com/news/articles/c4g83vddnz0o
+
+=== Neue Zürcher Zeitung — https://www.nzz.ch/ ===
+  • Zwei chinesische Stromer für Stellantis: Leapmotor B05 und B03X sollen dem Europa-Partner neue Wege aufzeigen
+    Mit leistungsstarker Technik zu tiefen Preisen stiehlt Leapmotor den Fahrzeugen des europäischen Joint-Venture-Partners die Schau.
+    https://www.nzz.ch/mobilitaet/zwei-chinesische-stromer-fuer-stellantis-ld.10006356
+
+  • Der Schattenmann der thailändischen Politik darf in den Hausarrest
+    Am Montag wurde der ehemalige thailändische Ministerpräsident Thaksin Shinawatra aus der Haft entlassen.
+    https://www.nzz.ch/international/der-schattenmann-der-thailaendischen-politik-darf-ld.10006603
+```
+
+On a TTY, headlines render in **bold bright cyan**, source banners in **bold bright yellow**, and URLs as gray + underlined [OSC 8](https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda) hyperlinks — click them directly in your terminal.
+
+### Markdown — `news fetch --md`
+
+```text
+$ news fetch nzz -n 1 --md
+# News frontpages — fetched 2026-05-11T15:51:13Z
+
+## Neue Zürcher Zeitung
+
+Source: [https://www.nzz.ch/](https://www.nzz.ch/) · fetched 2026-05-11T15:51:13Z
+
+- **[Zwei chinesische Stromer für Stellantis: Leapmotor B05 und B03X sollen dem Europa-Partner neue Wege aufzeigen](https://www.nzz.ch/mobilitaet/zwei-chinesische-stromer-fuer-stellantis-ld.10006356)** — _via Neue Zürcher Zeitung_
+  > Mit leistungsstarker Technik zu tiefen Preisen stiehlt Leapmotor den Fahrzeugen des europäischen Joint-Venture-Partners die Schau. Zudem soll der Hersteller bald ein neues Auto für Opel entwickeln.
+```
+
+### JSON — `news fetch --json`
+
+Designed for an LLM agent or downstream script. Every item carries `source`, `source_url`, the article `url`, and a `fetched_at` timestamp so citations stay intact when piped into another tool.
+
+```json
+$ news fetch bbc -n 1 --json
+[
+  {
+    "source": {
+      "name": "bbc",
+      "title": "BBC News",
+      "homepage": "https://www.bbc.com/news",
+      "locale": "en-GB",
+      "region": "Global",
+      "extractor": {
+        "type": "feed",
+        "feed_url": "https://feeds.bbci.co.uk/news/rss.xml"
+      }
+    },
+    "items": [
+      {
+        "source": "bbc",
+        "source_url": "https://www.bbc.com/news",
+        "headline": "Analysis: Has Starmer done enough to save his premiership?",
+        "dek": "Was the prime minister's speech enough to avert a challenge to his leadership less than two years after he won a landslide general election victory?",
+        "url": "https://www.bbc.com/news/articles/c3r2pr95yq0o",
+        "published": "2026-05-11T13:09:32Z",
+        "fetched_at": "2026-05-11T15:51:13Z"
+      }
+    ],
+    "fetched_at": "2026-05-11T15:51:13Z"
+  }
+]
+```
+
+### Editorial brief — `news tenor`
+
+Fetches every configured source (or a subset), ships the corpus to your locally-installed `claude` or `codex` CLI, and returns a deduplicated, long-lasting-focused brief. The example below merged stories across BBC, NYT and Le Monde in ~13 seconds.
+
+```text
+$ news tenor bbc nyt lemonde -n 5 --entries 3
+fetching 3 sources…
+asking claude for a brief over 15 headlines from 3 sources…
+News brief — 2026-05-11  (via claude)
+
+• Trump-Xi summit looms as China prepares for trade confrontation
+  Ahead of President Trump's visit to Beijing, China is signaling readiness for an economic showdown
+  and building a legal arsenal, while US lawmakers press the administration to advance a delayed
+  arms sale to Taiwan. Asian middle powers fear Washington may trade security commitments for better
+  economic terms with Beijing.
+  sources: nyt, nyt, nyt
+    https://www.nytimes.com/2026/05/11/business/trump-xi-economic-warfare.html
+    https://www.nytimes.com/2026/05/11/us/politics/taiwan-trump-china-xi-jinping.html
+    https://www.nytimes.com/2026/05/11/world/asia/trump-xi-china-summit-iran.html
+
+• Middle East war drives major energy shock and global economic strain
+  Aramco's CEO described the Iran conflict as the largest energy shock on record, warning that
+  markets would need months to rebalance even if the Strait of Hormuz reopened immediately. India's
+  Prime Minister Modi is urging citizens to curb gold purchases and foreign travel.
+  sources: lemonde, nyt
+    https://www.lemonde.fr/international/live/2026/05/11/en-direct-guerre-au-moyen-orient-...
+    https://www.nytimes.com/2026/05/11/world/asia/modi-indians-gold-weddings-fuel-economy-iran.html
+
+• Hantavirus outbreak on cruise ship triggers international repatriations
+  Passengers from an affected cruise ship are being returned to their home countries, with British
+  arrivals isolated in hospital for 72-hour monitoring and a repatriated French citizen testing
+  positive. The UN has called for coordinated international health efforts.
+  sources: bbc, lemonde, nyt
+    https://www.bbc.com/news/articles/c4g83vddnz0o
+    https://www.lemonde.fr/sante/live/2026/05/11/en-direct-hantavirus-le-hondius-...
+    https://www.nytimes.com/2026/05/11/podcasts/the-headlines/trump-iran-hantavirus.html
+```
+
+On a TTY the URL list collapses to **`sources: bbc, lemonde, nyt`** where each name is a clickable hyperlink (gray + underlined).
+
+### Topic-biased brief — `news tenor -i "…"`
+
+Free-form prose biases the brief. Narrows ("only X"), expands ("more X, less Y"), or overrides defaults ("yes I want sports, that's exactly what I want") — whichever the model judges from the prose.
+
+```text
+$ news tenor -i "today I only want science and climate, no politics" \
+            bbc nyt nzz lemonde economist nature --entries 5
+News brief — 2026-05-11  (via claude)
+
+• Hantavirus outbreak from cruise ship 'Hondius' spreads to multiple countries
+  Passengers from the affected cruise are being repatriated and monitored across Europe and beyond,
+  with new positive cases in the UK and France and three deaths so far linked to the outbreak.
+  sources: bbc, bbc, nzz, lemonde
+
+• Why hantavirus is unlikely to trigger a Covid-style pandemic
+  An NZZ science analysis lays out four reasons the current hantavirus cluster differs fundamentally
+  from SARS-CoV-2, including its transmission route and lack of efficient human-to-human spread.
+  sources: nzz
+
+• The sleep paradox: why humans sleep less than biology suggests we need
+  Nature explores emerging research on why human sleep duration appears mismatched with its
+  restorative importance.
+  sources: nature
+
+• Drug developers make progress against 'undruggable' cancer proteins
+  Nature reports on new chemical approaches that are beginning to target cancer-driving proteins
+  long considered inaccessible to small-molecule drugs.
+  sources: nature
+
+• Presymptomatic training shown to ease deficits in Rett syndrome mouse model
+  A publisher correction accompanies findings that early behavioural training in a mouse model
+  of Rett syndrome can mitigate later functional impairments.
+  sources: nature
+```
+
+Trump-China and Iran politics dominated the same corpus when run without `-i`; here they're absent.
+
+### ASCII art — `--ascii`
+
+Pre-rendered concurrently from each item's lede image. PNG/JPEG/GIF supported via stdlib. Brightness is mapped to a 10-step glyph ramp (` .:-=+*#%@`), heights are aspect-corrected for terminal cell ratio.
+
+```text
+$ news fetch nyt -n 1 --ascii --ascii-width 50
+=== The New York Times — https://www.nytimes.com/ ===
+  • As Trump Heads to Beijing, China Is 'Locked and Loaded' for a Fight
+    Beijing is signaling that it is ready for a trade showdown, and it is building up a legal arsenal in preparation.
+    https://www.nytimes.com/2026/05/11/business/trump-xi-economic-warfare.html
+    ####********#*****#*#*##*#######*######********+++
+    ####*#*********************************##*********
+    ##########***#########****++**++++++++++++++++++++
+    #################*###*######**+++++***************
+    *#*****************##****#**####******++++++******
+    *******++*+****+++++**++*************+++++++++++++
+    ***************************+**+*+++**********+++++
+    ****#*#************++*********++++*****+++++++++++
+    *************++*+*++++++++++++++++++++*****++++*++
+    **************+*++++++++++++++++++++++++++++++++++
+    ********#%#*******++++*+++++++++++++++++++++++++++
+    *******=*****+*+*+++++++++++++++++++++++++++++++++
+    ********++++++++++++++++++++++++++++++++++++++++++
+    *=---==+:-...:...:::--##=*-%===--==*--------=+====
+    =:=+++++++.....-::...::#:.-::.:-=-.==*-.+..-:..-=:
+    -==:.:.::.::::.:.-=.+-::-.:::...-.*..-::+...:---:.
+    .==-.:.::=:-:.. -- ::-.-. :- ..:...  .:.:: -:.. .-
+    ====::::.--.==:.--. .:::.=---:-=:=*---.--:--...::.
+    .::::.=-:..:-= -::--::.-=  : ...::. .  ..:--...+:.
+    ...-.. :::.=- ..::.:.-==.*--=..+==--=:..:...:.+:#:
+    ...::  --.::..  .*=+ ===   -+ .  :.   ::.=--= ..#.
+    =. :.. -****+=++.. . *+**++=+ %---- .=   ..: :..=:
+    === ..+--:--:==-- .  .*-=+--+..     :    .:     ::
+    -:- +::.::::: =.==. :  : - ..   :   :::.: .   .=-:
+    --- .    .::=++=.-= -:   - ..=.   ....+--=-::::..:
+```
+
+Combine with `--md` to embed the art in fenced code blocks under each headline, or with `news tenor --ascii` to attach one representative thumbnail to each merged brief entry.
+
+### Source list — `news list`
+
+```text
+$ news list
+abc-au                 ABC News (Australia)              https://www.abc.net.au/news [feed]
+africa-intelligence    Africa Intelligence               https://www.africaintelligence.com/ [unconfigured]
+african-arguments      African Arguments                 https://africanarguments.org/ [feed]
+al-monitor             Al-Monitor                        https://www.al-monitor.com/ [feed]
+aljazeera              Al Jazeera English                https://www.aljazeera.com/ [feed]
+allafrica              AllAfrica                         https://allafrica.com/ [feed]
+ap                     Associated Press                  https://apnews.com/ [unconfigured]
+asahi                  The Asahi Shimbun                 https://www.asahi.com/ajw/ [unconfigured]
+atlantic               The Atlantic                      https://www.theatlantic.com/ [feed]
+bbc                    BBC News                          https://www.bbc.com/news [feed]
+...
+```
+
+62 sources total — bundled seed list spans Africa, the Middle East, Asia, Europe, North America, Oceania, and South America. Use `news list --json` for machine-readable output.
+
 ## Subcommands
 
 | Command | What it does |
