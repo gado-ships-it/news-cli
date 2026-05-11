@@ -135,3 +135,45 @@ func oneLine(s string) string {
 	s = strings.ReplaceAll(s, "\r", " ")
 	return strings.Join(strings.Fields(s), " ")
 }
+
+// Brief renders an editorial brief in the requested format.
+func Brief(w io.Writer, b *source.Brief, f Format) error {
+	switch f {
+	case FormatJSON:
+		return writeJSON(w, b)
+	case FormatMD:
+		fmt.Fprintf(w, "# News brief — %s\n\n", b.Date)
+		fmt.Fprintf(w, "_Generated %s via %s, dedup'd across configured sources._\n\n",
+			b.GeneratedAt.Format(time.RFC3339), b.Model)
+		for _, it := range b.Items {
+			fmt.Fprintf(w, "## %s\n\n", oneLine(it.Headline))
+			fmt.Fprintf(w, "%s\n\n", oneLine(it.Summary))
+			if len(it.Sources) > 0 {
+				parts := make([]string, 0, len(it.Sources))
+				for _, s := range it.Sources {
+					parts = append(parts, fmt.Sprintf("[%s](%s)", s.Name, s.URL))
+				}
+				fmt.Fprintf(w, "Sources: %s\n\n", strings.Join(parts, " · "))
+			}
+		}
+		return nil
+	default:
+		fmt.Fprintf(w, "News brief — %s  (via %s)\n\n", b.Date, b.Model)
+		for _, it := range b.Items {
+			fmt.Fprintf(w, "• %s\n", oneLine(it.Headline))
+			fmt.Fprintf(w, "  %s\n", oneLine(it.Summary))
+			if len(it.Sources) > 0 {
+				names := make([]string, 0, len(it.Sources))
+				for _, s := range it.Sources {
+					names = append(names, s.Name)
+				}
+				fmt.Fprintf(w, "  sources: %s\n", strings.Join(names, ", "))
+				for _, s := range it.Sources {
+					fmt.Fprintf(w, "    %s\n", s.URL)
+				}
+			}
+			fmt.Fprintln(w)
+		}
+		return nil
+	}
+}

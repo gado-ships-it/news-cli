@@ -49,6 +49,39 @@ func NewBackendFromEnv() (*Backend, error) {
 	return nil, fmt.Errorf("no LLM CLI on $PATH (looked for: %s) — install Claude Code (`claude`) or the OpenAI Codex CLI (`codex`)", strings.Join(tried, ", "))
 }
 
+// RunPrompt sends prompt to the backend CLI and returns the raw assistant
+// reply as text. Used for any task beyond selector inference (e.g. `news
+// tenor` editorial briefs).
+//
+// Honors the caller's ctx for cancellation/timeout. b.Timeout is applied
+// as an additional cap so a runaway subprocess can't outlive the backend's
+// configured limit even if the caller forgot to set a ctx deadline.
+func (b *Backend) RunPrompt(ctx context.Context, prompt string) (string, error) {
+	if b.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, b.Timeout)
+		defer cancel()
+	}
+
+	cmd, err := b.command(ctx, prompt)
+	if err != nil {
+		return "", err
+	}
+	// Run from a neutral working directory so the CLI doesn't accidentally
+	// pull in a CLAUDE.md / project context from wherever news-cli was
+	// invoked.
+	cmd.Dir = os.TempDir()
+	cmd.Stdin = bytes.NewReader(nil)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%s exec: %w — stderr: %s", b.Name, err, truncate(stderr.String(), 400))
+	}
+	return stdout.String(), nil
+}
+
 // DeriveSelectors asks the backing CLI for a JSON spec describing the
 // per-article CSS selectors on a news outlet's homepage.
 func (b *Backend) DeriveSelectors(ctx context.Context, homepage string, html []byte) (source.CSSSelectors, error) {
@@ -58,30 +91,14 @@ func (b *Backend) DeriveSelectors(ctx context.Context, homepage string, html []b
 	}
 	prompt := buildPrompt(homepage, cleaned)
 
-	ctx, cancel := context.WithTimeout(ctx, b.Timeout)
-	defer cancel()
-
-	cmd, err := b.command(ctx, prompt)
+	raw, err := b.RunPrompt(ctx, prompt)
 	if err != nil {
 		return source.CSSSelectors{}, err
 	}
 
-	// Run from a neutral working directory so the CLI doesn't accidentally
-	// pull in a CLAUDE.md / project context from wherever the user invoked
-	// `news learn`.
-	cmd.Dir = os.TempDir()
-	cmd.Stdin = bytes.NewReader(nil)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return source.CSSSelectors{}, fmt.Errorf("%s exec: %w — stderr: %s", b.Name, err, truncate(stderr.String(), 400))
-	}
-
-	jsonStr := extractJSONObject(stdout.String())
+	jsonStr := extractJSONObject(raw)
 	if jsonStr == "" {
-		return source.CSSSelectors{}, fmt.Errorf("%s returned no JSON object — stdout: %s", b.Name, truncate(stdout.String(), 400))
+		return source.CSSSelectors{}, fmt.Errorf("%s returned no JSON object — stdout: %s", b.Name, truncate(raw, 400))
 	}
 	var sel source.CSSSelectors
 	if err := json.Unmarshal([]byte(jsonStr), &sel); err != nil {

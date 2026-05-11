@@ -63,3 +63,27 @@ type Frontpage struct {
 	FetchedAt time.Time `json:"fetched_at"`
 	Error     string    `json:"error,omitempty"`
 }
+
+// Brief is the editorial digest produced by `news tenor` — duplicates
+// merged, single-event noise stripped, long-lasting stories surfaced. The
+// LLM populates Date and Items; GeneratedAt is stamped by the caller.
+type Brief struct {
+	Date        string      `json:"date"` // YYYY-MM-DD, set by the LLM from the corpus
+	Items       []BriefItem `json:"items"`
+	GeneratedAt time.Time   `json:"generated_at"`
+	Model       string      `json:"model,omitempty"` // backend name (claude / codex)
+}
+
+// BriefItem is one merged story in a Brief. Sources is mandatory — every
+// item must cite at least one originating outlet for attribution.
+type BriefItem struct {
+	Headline string         `json:"headline"`
+	Summary  string         `json:"summary"`
+	Sources  []BriefSource  `json:"sources"`
+}
+
+// BriefSource references one outlet's coverage of a BriefItem.
+type BriefSource struct {
+	Name string `json:"name"` // source short id, e.g. "nzz"
+	URL  string `json:"url"`  // article URL on the publisher's site
+}

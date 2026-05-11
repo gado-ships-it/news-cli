@@ -41,4 +41,5 @@ func init() {
 	rootCmd.AddCommand(learnCmd)
 	rootCmd.AddCommand(submitCmd)
 	rootCmd.AddCommand(sourcesCmd)
+	rootCmd.AddCommand(tenorCmd)
 }
