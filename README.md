@@ -1,3 +1,5 @@
+<img width="1254" height="1254" style="width:200px;" alt="news-cli" src="news-cli.png" />
+
 # news-cli
 
 **An agent-native CLI for news — inspired by [tenor.news](https://tenor.news/).**
